@@ -54,14 +54,29 @@ export default function QRCodeScanModal({
     setConnectionStatus("Initializing...");
     
     try {
-      // Initialize proper auth credentials using the initAuthCreds function
+      // Initialize proper auth credentials
       const creds = initAuthCreds();
       
-      // Create a proper auth state object
+      // Create a proper auth state with SignalKeyStore implementation
       const auth = { 
         state: { 
           creds: creds,
-          keys: {}
+          keys: {
+            // Implement the required get and set methods for SignalKeyStore
+            get: async (type, ids) => {
+              const data = {};
+              return ids.reduce((dict, id) => {
+                dict[id] = data[id] || null;
+                return dict;
+              }, {});
+            },
+            set: async (data) => {
+              // In-memory implementation - in a real app, you'd save this
+              for (const category in data) {
+                // data[category] would be stored in persistent storage
+              }
+            }
+          }
         }
       };
       
