@@ -79,10 +79,8 @@ export default function QRCodeScanModal({
           set: async (data) => {
             // In-memory implementation - in a real app, you'd save this
             // console.log("Saving keys data", Object.keys(data));
-          },
-          delete: async () => {
-            // Delete function required by interface but can be empty
           }
+          // Remove the 'delete' property as it's not part of the SignalKeyStore interface
         }
       };
       
