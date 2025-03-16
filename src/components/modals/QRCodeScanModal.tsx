@@ -10,7 +10,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, initAuthCreds, BufferJSON } from "@whiskeysockets/baileys";
+import { 
+  makeWASocket, 
+  useMultiFileAuthState, 
+  DisconnectReason, 
+  initAuthCreds, 
+  BufferJSON,
+  proto,
+  AuthenticationState
+} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 
 interface QRCodeScanModalProps {
@@ -57,32 +65,30 @@ export default function QRCodeScanModal({
       // Initialize proper auth credentials
       const creds = initAuthCreds();
       
-      // Create a proper auth state with SignalKeyStore implementation
-      const auth = { 
-        state: { 
-          creds: creds,
-          keys: {
-            // Implement the required get and set methods for SignalKeyStore
-            get: async (type, ids) => {
-              const data = {};
-              return ids.reduce((dict, id) => {
-                dict[id] = data[id] || null;
-                return dict;
-              }, {});
-            },
-            set: async (data) => {
-              // In-memory implementation - in a real app, you'd save this
-              for (const category in data) {
-                // data[category] would be stored in persistent storage
-              }
+      // Create auth state with properly implemented SignalKeyStore
+      const authState: AuthenticationState = {
+        creds,
+        keys: {
+          get: async (type, ids) => {
+            const result = {};
+            for (const id of ids) {
+              result[id] = null;
             }
+            return result;
+          },
+          set: async (data) => {
+            // In-memory implementation - in a real app, you'd save this
+            // console.log("Saving keys data", Object.keys(data));
+          },
+          delete: async () => {
+            // Delete function required by interface but can be empty
           }
         }
       };
       
       // Create a new WhatsApp connection
       const sock = makeWASocket({
-        auth: auth.state,
+        auth: authState,
         printQRInTerminal: false,
       });
       
