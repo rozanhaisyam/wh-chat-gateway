@@ -94,6 +94,7 @@ export default function DeviceCard({
               size="sm" 
               className="flex-1"
               onClick={() => onConnect(device.id)}
+              disabled={device.status === 'pending'}
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Connect

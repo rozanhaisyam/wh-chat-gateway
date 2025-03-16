@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import QRCode from "qrcode";
 
 interface QRCodeScanModalProps {
   isOpen: boolean;
@@ -23,23 +26,133 @@ export default function QRCodeScanModal({
   deviceId,
   deviceName,
 }: QRCodeScanModalProps) {
-  const [qrCode, setQrCode] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
+  const [qrAttemptCount, setQrAttemptCount] = useState(0);
+  const socketRef = useRef<any>(null);
+  const maxQrAttempts = 5;
 
   useEffect(() => {
     if (isOpen && deviceId) {
-      // In a real app, this would fetch the QR code from the backend
-      setLoading(true);
-      setTimeout(() => {
-        setQrCode(
-          "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=whatsapp-web-connect-example"
-        );
-        setLoading(false);
-      }, 1500);
-    } else {
-      setQrCode(null);
+      connectToWhatsApp();
     }
+    
+    return () => {
+      // Cleanup function to disconnect when modal is closed
+      if (socketRef.current) {
+        socketRef.current.ws?.close();
+        socketRef.current = null;
+      }
+    };
   }, [isOpen, deviceId]);
+
+  const connectToWhatsApp = async () => {
+    setLoading(true);
+    setQrCodeUrl(null);
+    setConnectionStatus("Initializing...");
+    
+    try {
+      // In a real app, this would use the file system.
+      // For this web app demo, we'll use an in-memory state
+      // that will reset on page refresh
+      
+      // This is a simplified version for demo purposes
+      const auth = { state: { creds: {}, keys: {} } };
+      
+      // Create a new WhatsApp connection
+      const sock = makeWASocket({
+        auth: auth.state,
+        printQRInTerminal: false,
+      });
+      
+      socketRef.current = sock;
+      
+      sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+          // New QR code received
+          setQrAttemptCount(prev => prev + 1);
+          setConnectionStatus(`QR Code generated (${qrAttemptCount + 1}/${maxQrAttempts})`);
+          
+          try {
+            // Convert QR code to data URL
+            const qrUrl = await QRCode.toDataURL(qr);
+            setQrCodeUrl(qrUrl);
+            setLoading(false);
+          } catch (err) {
+            toast({
+              variant: "destructive",
+              title: "Error generating QR code",
+              description: "There was a problem generating the QR code."
+            });
+            setLoading(false);
+          }
+          
+          // If reached max attempts, stop
+          if (qrAttemptCount >= maxQrAttempts - 1) {
+            setConnectionStatus("Max QR attempts reached. Please try again later.");
+            sock.ws?.close();
+          }
+        }
+        
+        if (connection === "open") {
+          setConnectionStatus("Connected successfully!");
+          setLoading(false);
+          toast({
+            title: "Device connected",
+            description: `${deviceName} has been connected successfully!`
+          });
+          
+          // In a real app, you would update your database with the connection info
+          setTimeout(() => {
+            onClose();
+          }, 2000);
+        }
+        
+        if (connection === "close") {
+          const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+          
+          if (statusCode === DisconnectReason.loggedOut) {
+            setConnectionStatus("Logged out from device.");
+            toast({
+              variant: "destructive",
+              title: "Logged out",
+              description: "You were logged out from WhatsApp."
+            });
+          } else if (statusCode !== DisconnectReason.connectionReplaced) {
+            setConnectionStatus("Connection closed. Try again.");
+          }
+          
+          setLoading(false);
+        }
+      });
+      
+    } catch (error) {
+      console.error("Connection error:", error);
+      setConnectionStatus("Error connecting to WhatsApp.");
+      setLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Connection error",
+        description: "There was a problem connecting to WhatsApp."
+      });
+    }
+  };
+
+  const handleRefreshQR = () => {
+    if (qrAttemptCount >= maxQrAttempts) {
+      setQrAttemptCount(0);
+    }
+    
+    if (socketRef.current) {
+      socketRef.current.ws?.close();
+    }
+    
+    connectToWhatsApp();
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -56,24 +169,37 @@ export default function QRCodeScanModal({
             <div className="flex flex-col items-center">
               <Loader2 className="h-16 w-16 animate-spin text-whatsapp" />
               <p className="mt-4 text-sm text-muted-foreground">
-                Generating QR code...
+                {connectionStatus || "Generating QR code..."}
               </p>
             </div>
           ) : (
             <div className="flex flex-col items-center">
-              <div className="border-8 border-white p-1 rounded-lg shadow-md">
-                <img
-                  src={qrCode || ""}
-                  alt="QR Code"
-                  className="w-48 h-48"
-                />
-              </div>
+              {qrCodeUrl ? (
+                <div className="border-8 border-white p-1 rounded-lg shadow-md">
+                  <img
+                    src={qrCodeUrl}
+                    alt="QR Code"
+                    className="w-48 h-48"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-48 w-48 bg-gray-100 rounded-lg">
+                  <p className="text-sm text-center text-muted-foreground px-4">
+                    {connectionStatus || "No QR code available"}
+                  </p>
+                </div>
+              )}
               <p className="mt-4 text-sm text-muted-foreground">
-                QR code will refresh in 45 seconds
+                {connectionStatus || "QR code will refresh in 45 seconds"}
               </p>
-              <div className="w-full max-w-[200px] h-2 bg-gray-200 rounded-full mt-2">
-                <div className="h-full bg-whatsapp rounded-full animate-pulse-light" style={{ width: '100%' }}></div>
-              </div>
+              {qrCodeUrl && (
+                <div className="w-full max-w-[200px] h-2 bg-gray-200 rounded-full mt-2">
+                  <div 
+                    className="h-full bg-whatsapp rounded-full animate-pulse-light" 
+                    style={{ width: `${(qrAttemptCount / maxQrAttempts) * 100}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -82,15 +208,8 @@ export default function QRCodeScanModal({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => {
-            setLoading(true);
-            setTimeout(() => {
-              setQrCode(
-                "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=whatsapp-web-connect-example"
-              );
-              setLoading(false);
-            }, 1500);
-          }}>
+          <Button onClick={handleRefreshQR} disabled={loading}>
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh QR
           </Button>
         </div>
