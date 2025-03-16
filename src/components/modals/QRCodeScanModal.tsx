@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, initAuthCreds, BufferJSON } from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 
 interface QRCodeScanModalProps {
@@ -54,12 +54,16 @@ export default function QRCodeScanModal({
     setConnectionStatus("Initializing...");
     
     try {
-      // In a real app, this would use the file system.
-      // For this web app demo, we'll use an in-memory state
-      // that will reset on page refresh
+      // Initialize proper auth credentials using the initAuthCreds function
+      const creds = initAuthCreds();
       
-      // This is a simplified version for demo purposes
-      const auth = { state: { creds: {}, keys: {} } };
+      // Create a proper auth state object
+      const auth = { 
+        state: { 
+          creds: creds,
+          keys: {}
+        }
+      };
       
       // Create a new WhatsApp connection
       const sock = makeWASocket({
@@ -128,6 +132,12 @@ export default function QRCodeScanModal({
           
           setLoading(false);
         }
+      });
+      
+      // Handle credentials updates
+      sock.ev.on("creds.update", () => {
+        // In a real app, you would save the updated credentials
+        console.log("Credentials updated");
       });
       
     } catch (error) {
