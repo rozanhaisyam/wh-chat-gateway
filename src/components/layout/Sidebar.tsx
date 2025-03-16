@@ -26,7 +26,7 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
 
   return (
-    <SidebarComponent defaultCollapsed={isMobile} className="border-r">
+    <SidebarComponent className="border-r">
       <SidebarHeader className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
           {!isCollapsed && (
